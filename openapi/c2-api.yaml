@@ -1,0 +1,1637 @@
+openapi: 3.1.0
+info:
+  title: C2 Central Management System API
+  version: 0.1.0
+  summary: REST API for C2 warehouse automation orchestration.
+  description: >
+    API contract for MRV ingestion, workflow orchestration, SMARTBox control,
+    AMR mission orchestration, robot task integration, authentication, and audit.
+    Source note: requested *_Prompt.md files were not present; generated from
+    /specs/07-api-integration.md, /specs/08-data-model.md, and /specs/05-workflows.md.
+servers:
+  - url: https://c2.example.com
+    description: Production placeholder
+  - url: http://localhost:5000
+    description: Local development
+tags:
+  - name: Auth
+  - name: MRVs
+  - name: Workflows
+  - name: SMARTBoxes
+  - name: AMRs
+  - name: Robots
+  - name: Audit
+  - name: Health
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      tags: [Health]
+      summary: Get API health status.
+      security: []
+      operationId: getHealth
+      responses:
+        "200":
+          description: Service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+
+  /api/auth/login:
+    post:
+      tags: [Auth]
+      summary: Authenticate a user and issue JWT tokens.
+      security: []
+      operationId: login
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/LoginRequest"
+      responses:
+        "200":
+          description: Login succeeded.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/refresh:
+    post:
+      tags: [Auth]
+      summary: Refresh JWT access token.
+      security: []
+      operationId: refreshToken
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RefreshTokenRequest"
+      responses:
+        "200":
+          description: Token refreshed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuthResponseEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/auth/logout:
+    post:
+      tags: [Auth]
+      summary: Revoke the current session or refresh token.
+      operationId: logout
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: Logout succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EmptyResponseEnvelope"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/mrvs:
+    post:
+      tags: [MRVs]
+      summary: Receive MRV payload from AB3/Ultramain.
+      description: Creates one active workflow for a valid MRV. Duplicate active MRVs are rejected.
+      operationId: createMrv
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateMrvRequest"
+      responses:
+        "201":
+          description: MRV accepted and workflow created.
+          headers:
+            X-Trace-Id:
+              $ref: "#/components/headers/TraceId"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateMrvResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/mrvs/{mrvId}:
+    get:
+      tags: [MRVs]
+      summary: Get MRV details.
+      operationId: getMrv
+      parameters:
+        - $ref: "#/components/parameters/MrvIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: MRV found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MrvResponseEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/workflows:
+    get:
+      tags: [Workflows]
+      summary: Search workflows.
+      operationId: searchWorkflows
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/WorkflowState"
+        - name: mrvId
+          in: query
+          schema:
+            type: string
+        - name: deviceId
+          in: query
+          schema:
+            type: string
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Workflow search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowListResponseEnvelope"
+
+  /api/workflows/{workflowId}:
+    get:
+      tags: [Workflows]
+      summary: Get workflow detail.
+      operationId: getWorkflow
+      parameters:
+        - $ref: "#/components/parameters/WorkflowIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: Workflow detail found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowResponseEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/workflows/{workflowId}/retry:
+    post:
+      tags: [Workflows]
+      summary: Retry a workflow in retryable failure state.
+      operationId: retryWorkflow
+      parameters:
+        - $ref: "#/components/parameters/WorkflowIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowActionRequest"
+      responses:
+        "200":
+          description: Workflow retry accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowActionResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/workflows/{workflowId}/pause:
+    post:
+      tags: [Workflows]
+      summary: Pause a workflow.
+      operationId: pauseWorkflow
+      parameters:
+        - $ref: "#/components/parameters/WorkflowIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowActionRequest"
+      responses:
+        "200":
+          description: Workflow paused.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowActionResponseEnvelope"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/workflows/{workflowId}/resume:
+    post:
+      tags: [Workflows]
+      summary: Resume a paused workflow.
+      operationId: resumeWorkflow
+      parameters:
+        - $ref: "#/components/parameters/WorkflowIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowActionRequest"
+      responses:
+        "200":
+          description: Workflow resumed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowActionResponseEnvelope"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/workflows/{workflowId}/cancel:
+    post:
+      tags: [Workflows]
+      summary: Cancel a workflow.
+      operationId: cancelWorkflow
+      parameters:
+        - $ref: "#/components/parameters/WorkflowIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/WorkflowActionRequest"
+      responses:
+        "200":
+          description: Workflow cancelled.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/WorkflowActionResponseEnvelope"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/smartboxes:
+    get:
+      tags: [SMARTBoxes]
+      summary: Search SMARTBoxes.
+      operationId: searchSmartBoxes
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeviceStatus"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: SMARTBox search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartBoxListResponseEnvelope"
+
+  /api/smartboxes/{smartBoxId}/status:
+    get:
+      tags: [SMARTBoxes]
+      summary: Query SMARTBox status.
+      operationId: getSmartBoxStatus
+      parameters:
+        - $ref: "#/components/parameters/SmartBoxIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: SMARTBox status.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SmartBoxResponseEnvelope"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+  /api/smartboxes/{smartBoxId}/doors/{doorId}/open:
+    post:
+      tags: [SMARTBoxes]
+      summary: Open a SMARTBox door.
+      operationId: openSmartBoxDoor
+      parameters:
+        - $ref: "#/components/parameters/SmartBoxIdPath"
+        - $ref: "#/components/parameters/DoorIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DoorCommandRequest"
+      responses:
+        "202":
+          description: Door open command accepted. Physical completion requires DOOR_OPENED event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/smartboxes/{smartBoxId}/doors/{doorId}/close:
+    post:
+      tags: [SMARTBoxes]
+      summary: Close a SMARTBox door.
+      operationId: closeSmartBoxDoor
+      parameters:
+        - $ref: "#/components/parameters/SmartBoxIdPath"
+        - $ref: "#/components/parameters/DoorIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DoorCommandRequest"
+      responses:
+        "202":
+          description: Door close command accepted. Physical completion requires DOOR_CLOSED event.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/smartboxes/{smartBoxId}/events:
+    post:
+      tags: [SMARTBoxes]
+      summary: Receive SMARTBox event or telemetry.
+      operationId: receiveSmartBoxEvent
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/SmartBoxIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SmartBoxEventRequest"
+      responses:
+        "202":
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+
+  /api/amrs:
+    get:
+      tags: [AMRs]
+      summary: Search AMRs.
+      operationId: searchAmrs
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeviceStatus"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: AMR search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AmrListResponseEnvelope"
+
+  /api/amrs/{amrId}/missions:
+    post:
+      tags: [AMRs]
+      summary: Assign AMR delivery or return-home mission.
+      operationId: createAmrMission
+      parameters:
+        - $ref: "#/components/parameters/AmrIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateAmrMissionRequest"
+      responses:
+        "202":
+          description: Mission command accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/amrs/{amrId}/events:
+    post:
+      tags: [AMRs]
+      summary: Receive AMR mission status or telemetry event.
+      operationId: receiveAmrEvent
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/AmrIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AmrEventRequest"
+      responses:
+        "202":
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/robots:
+    get:
+      tags: [Robots]
+      summary: Search robots.
+      operationId: searchRobots
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: status
+          in: query
+          schema:
+            $ref: "#/components/schemas/DeviceStatus"
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Robot search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RobotListResponseEnvelope"
+
+  /api/robots/{robotId}/packing-tasks:
+    post:
+      tags: [Robots]
+      summary: Trigger robot packing task.
+      operationId: createRobotPackingTask
+      parameters:
+        - $ref: "#/components/parameters/RobotIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - $ref: "#/components/parameters/IdempotencyKeyHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateRobotPackingTaskRequest"
+      responses:
+        "202":
+          description: Packing task command accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CommandAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "409":
+          $ref: "#/components/responses/Conflict"
+
+  /api/robots/{robotId}/events:
+    post:
+      tags: [Robots]
+      summary: Receive robot packing, health, or fault event.
+      operationId: receiveRobotEvent
+      security:
+        - bearerAuth: []
+        - apiKeyAuth: []
+      parameters:
+        - $ref: "#/components/parameters/RobotIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RobotEventRequest"
+      responses:
+        "202":
+          description: Event accepted.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EventAcceptedResponseEnvelope"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+
+  /api/audit:
+    get:
+      tags: [Audit]
+      summary: Search immutable audit records.
+      operationId: searchAudit
+      parameters:
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+        - name: workflowId
+          in: query
+          schema:
+            type: string
+        - name: mrvId
+          in: query
+          schema:
+            type: string
+        - name: deviceId
+          in: query
+          schema:
+            type: string
+        - name: userId
+          in: query
+          schema:
+            type: string
+        - name: correlationId
+          in: query
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: "#/components/parameters/Page"
+        - $ref: "#/components/parameters/PageSize"
+      responses:
+        "200":
+          description: Audit search results.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditListResponseEnvelope"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+
+  /api/audit/{auditId}:
+    get:
+      tags: [Audit]
+      summary: Get one audit record.
+      operationId: getAuditRecord
+      parameters:
+        - $ref: "#/components/parameters/AuditIdPath"
+        - $ref: "#/components/parameters/CorrelationIdHeader"
+        - $ref: "#/components/parameters/RequestIdHeader"
+      responses:
+        "200":
+          description: Audit record found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AuditResponseEnvelope"
+        "403":
+          $ref: "#/components/responses/Forbidden"
+        "404":
+          $ref: "#/components/responses/NotFound"
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    CorrelationIdHeader:
+      name: X-Correlation-Id
+      in: header
+      required: true
+      description: End-to-end correlation ID for workflow traceability.
+      schema:
+        type: string
+        format: uuid
+    RequestIdHeader:
+      name: X-Request-Id
+      in: header
+      required: true
+      description: Unique request ID for this API call.
+      schema:
+        type: string
+        format: uuid
+    IdempotencyKeyHeader:
+      name: Idempotency-Key
+      in: header
+      required: true
+      description: Required for command APIs to support safe retry and duplicate detection.
+      schema:
+        type: string
+        format: uuid
+    WorkflowIdPath:
+      name: workflowId
+      in: path
+      required: true
+      schema:
+        type: string
+    MrvIdPath:
+      name: mrvId
+      in: path
+      required: true
+      schema:
+        type: string
+    SmartBoxIdPath:
+      name: smartBoxId
+      in: path
+      required: true
+      schema:
+        type: string
+    DoorIdPath:
+      name: doorId
+      in: path
+      required: true
+      schema:
+        type: integer
+        minimum: 1
+    AmrIdPath:
+      name: amrId
+      in: path
+      required: true
+      schema:
+        type: string
+    RobotIdPath:
+      name: robotId
+      in: path
+      required: true
+      schema:
+        type: string
+    AuditIdPath:
+      name: auditId
+      in: path
+      required: true
+      schema:
+        type: string
+    Page:
+      name: page
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+    PageSize:
+      name: pageSize
+      in: query
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 200
+        default: 50
+
+  headers:
+    TraceId:
+      description: Server-generated trace ID for troubleshooting.
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    BadRequest:
+      description: Validation or malformed request error.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseEnvelope"
+    Unauthorized:
+      description: Missing or invalid authentication.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseEnvelope"
+    Forbidden:
+      description: Authenticated principal lacks required permission.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseEnvelope"
+    NotFound:
+      description: Resource not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseEnvelope"
+    Conflict:
+      description: Duplicate, invalid state transition, concurrency, or idempotency conflict.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponseEnvelope"
+
+  schemas:
+    EmptyObject:
+      type: object
+      additionalProperties: false
+
+    ErrorDetail:
+      type: object
+      required: [code, details]
+      properties:
+        code:
+          type: string
+          examples: [DEVICE_OFFLINE, DUPLICATE_MRV, INVALID_WORKFLOW_STATE]
+        details:
+          type: string
+        validationErrors:
+          type: array
+          items:
+            $ref: "#/components/schemas/ValidationError"
+
+    ValidationError:
+      type: object
+      required: [field, message]
+      properties:
+        field:
+          type: string
+        message:
+          type: string
+
+    ErrorResponseEnvelope:
+      type: object
+      required: [success, data, message, traceId, error]
+      properties:
+        success:
+          type: boolean
+          const: false
+        data:
+          type: "null"
+        message:
+          type: string
+          examples: [Operation failed]
+        traceId:
+          type: string
+          format: uuid
+        error:
+          $ref: "#/components/schemas/ErrorDetail"
+
+    EmptyResponseEnvelope:
+      type: object
+      required: [success, data, message, traceId, error]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data:
+          $ref: "#/components/schemas/EmptyObject"
+        message:
+          type: string
+        traceId:
+          type: string
+          format: uuid
+        error:
+          type: "null"
+
+    LoginRequest:
+      type: object
+      required: [username, password]
+      properties:
+        username:
+          type: string
+        password:
+          type: string
+          format: password
+
+    RefreshTokenRequest:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    AuthResponse:
+      type: object
+      required: [accessToken, refreshToken, expiresAt, user]
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        user:
+          $ref: "#/components/schemas/UserDto"
+
+    AuthResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AuthResponse"
+
+    SuccessEnvelopeBase:
+      type: object
+      required: [success, data, message, traceId, error]
+      properties:
+        success:
+          type: boolean
+          const: true
+        data: true
+        message:
+          type: string
+        traceId:
+          type: string
+          format: uuid
+        error:
+          type: "null"
+
+    CreateMrvRequest:
+      type: object
+      required: [mrvId, source, requester, destination, requestTimestamp, items]
+      properties:
+        mrvId:
+          type: string
+          examples: [MRV-001]
+        source:
+          type: string
+          examples: [AB3]
+        requester:
+          type: string
+        destination:
+          type: string
+          examples: [HANGAR-A]
+        requestTimestamp:
+          type: string
+          format: date-time
+        items:
+          type: array
+          minItems: 1
+          items:
+            $ref: "#/components/schemas/MrvItemRequest"
+
+    MrvItemRequest:
+      type: object
+      required: [itemCode, quantity, labelType, sizeCm, weightKg]
+      properties:
+        itemCode:
+          type: string
+        itemName:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        labelType:
+          type: string
+          enum: [single, multiple]
+        sizeCm:
+          $ref: "#/components/schemas/SizeCm"
+        weightKg:
+          type: number
+          minimum: 0
+
+    SizeCm:
+      type: object
+      required: [w, h, d]
+      properties:
+        w:
+          type: number
+        h:
+          type: number
+        d:
+          type: number
+
+    CreateMrvResponse:
+      type: object
+      required: [workflowId, status]
+      properties:
+        workflowId:
+          type: string
+          examples: [WF-001]
+        status:
+          $ref: "#/components/schemas/WorkflowState"
+
+    CreateMrvResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/CreateMrvResponse"
+
+    MrvDto:
+      type: object
+      required: [mrvId, sourceSystem, requesterId, destination, requestDateTime, status, items]
+      properties:
+        mrvId:
+          type: string
+        sourceSystem:
+          type: string
+        requesterId:
+          type: string
+        destination:
+          type: string
+        requestDateTime:
+          type: string
+          format: date-time
+        status:
+          type: string
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/MrvItemDto"
+
+    MrvItemDto:
+      type: object
+      properties:
+        mrvItemId:
+          type: string
+        itemCode:
+          type: string
+        itemName:
+          type: string
+        quantity:
+          type: integer
+        labelType:
+          type: string
+        sizeCm:
+          $ref: "#/components/schemas/SizeCm"
+        weightKg:
+          type: number
+        handlingType:
+          type: string
+          enum: [ROBOT, MANUAL]
+
+    MrvResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/MrvDto"
+
+    WorkflowState:
+      type: string
+      enum:
+        - RECEIVED
+        - VALIDATED
+        - PICKING_PENDING
+        - PICKING_COMPLETED
+        - PACKING_PENDING
+        - PACKING_IN_PROGRESS
+        - PACKED
+        - SMARTBOX_LOADING
+        - SMARTBOX_LOADED
+        - READY_FOR_DELIVERY
+        - DELIVERY_IN_PROGRESS
+        - DELIVERED
+        - COLLECTION_PENDING
+        - COLLECTED
+        - COMPLETED
+        - FAILED
+        - RETRY_PENDING
+        - MANUAL_INTERVENTION
+        - CANCELLED
+        - RECOVERY_PENDING
+        - RECONCILIATION_REQUIRED
+
+    WorkflowDto:
+      type: object
+      required: [workflowId, mrvId, currentState, startedAt]
+      properties:
+        workflowId:
+          type: string
+        mrvId:
+          type: string
+        workflowType:
+          type: string
+          default: MRV_DELIVERY
+        currentState:
+          $ref: "#/components/schemas/WorkflowState"
+        priority:
+          type: string
+          enum: [LOW, NORMAL, HIGH, CRITICAL]
+          default: NORMAL
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        failedReason:
+          type: string
+        steps:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowStepDto"
+        assignedDevices:
+          type: array
+          items:
+            $ref: "#/components/schemas/DeviceSummaryDto"
+        retryCount:
+          type: integer
+        escalationStatus:
+          type: string
+
+    WorkflowStepDto:
+      type: object
+      properties:
+        workflowStepId:
+          type: string
+        stepName:
+          type: string
+        state:
+          type: string
+        assignedDeviceId:
+          type: string
+        startedAt:
+          type: string
+          format: date-time
+        completedAt:
+          type: string
+          format: date-time
+        retryCount:
+          type: integer
+
+    WorkflowActionRequest:
+      type: object
+      properties:
+        reason:
+          type: string
+        operatorNote:
+          type: string
+
+    WorkflowActionResponse:
+      type: object
+      required: [workflowId, currentState]
+      properties:
+        workflowId:
+          type: string
+        currentState:
+          $ref: "#/components/schemas/WorkflowState"
+        acceptedAt:
+          type: string
+          format: date-time
+
+    WorkflowResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/WorkflowDto"
+
+    WorkflowActionResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/WorkflowActionResponse"
+
+    WorkflowListResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/WorkflowList"
+
+    WorkflowList:
+      type: object
+      required: [items, page, pageSize, totalCount]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: "#/components/schemas/WorkflowDto"
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        totalCount:
+          type: integer
+
+    DeviceStatus:
+      type: string
+      enum: [ONLINE, OFFLINE, FAULTED, LOW_BATTERY, EMERGENCY_STOP, MAINTENANCE]
+
+    DeviceSummaryDto:
+      type: object
+      properties:
+        deviceId:
+          type: string
+        deviceType:
+          type: string
+          enum: [KARDEX, MOBILE_MANIPULATOR, SMARTBOX, AMR]
+        deviceName:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        lastHeartbeatAt:
+          type: string
+          format: date-time
+
+    SmartBoxDto:
+      type: object
+      properties:
+        smartBoxId:
+          type: string
+        deviceId:
+          type: string
+        batteryPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        connectivityStatus:
+          $ref: "#/components/schemas/DeviceStatus"
+        currentLocation:
+          type: string
+        operationalStatus:
+          $ref: "#/components/schemas/DeviceStatus"
+        compartments:
+          type: array
+          items:
+            $ref: "#/components/schemas/SmartBoxCompartmentDto"
+
+    SmartBoxCompartmentDto:
+      type: object
+      properties:
+        compartmentId:
+          type: string
+        doorId:
+          type: integer
+        state:
+          type: string
+          enum: [AVAILABLE, RESERVED, LOADING, LOADED, DELIVERING, READY_FOR_COLLECTION, COLLECTION_IN_PROGRESS, OFFLINE, FAULTED]
+        occupiedFlag:
+          type: boolean
+        assignedWorkflowId:
+          type: string
+        assignedMrvItemId:
+          type: string
+
+    SmartBoxResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/SmartBoxDto"
+
+    SmartBoxListResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/SmartBoxDto"
+                page:
+                  type: integer
+                pageSize:
+                  type: integer
+                totalCount:
+                  type: integer
+
+    DoorCommandRequest:
+      type: object
+      required: [workflowId]
+      properties:
+        workflowId:
+          type: string
+        reason:
+          type: string
+        operatorNote:
+          type: string
+
+    SmartBoxEventRequest:
+      type: object
+      required: [eventType, timestamp]
+      properties:
+        eventType:
+          type: string
+          enum: [HEARTBEAT, DOOR_OPENED, DOOR_CLOSED, BATTERY_ALERT, FAULT, EMERGENCY_STOP, BOOT]
+        workflowId:
+          type: string
+        doorId:
+          type: integer
+        batteryPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        timestamp:
+          type: string
+          format: date-time
+        timestampMs:
+          type: integer
+          description: Optional SMARTBox epoch timestamp compatibility field.
+        sequenceNo:
+          type: integer
+        payload:
+          type: object
+          additionalProperties: true
+
+    CreateAmrMissionRequest:
+      type: object
+      required: [workflowId, missionType, smartBoxId, pickupLocation, dropoffLocation]
+      properties:
+        workflowId:
+          type: string
+        missionType:
+          type: string
+          enum: [DELIVERY, RETURN_HOME]
+        smartBoxId:
+          type: string
+        pickupLocation:
+          type: string
+        dropoffLocation:
+          type: string
+
+    AmrEventRequest:
+      type: object
+      required: [eventType, timestamp]
+      properties:
+        eventType:
+          type: string
+          enum: [MISSION_ASSIGNED, MISSION_STARTED, MISSION_COMPLETED, MISSION_FAILED, BATTERY_ALERT, LOCATION_UPDATED, FAULT, EMERGENCY_STOP]
+        workflowId:
+          type: string
+        missionId:
+          type: string
+        batteryPct:
+          type: integer
+          minimum: 0
+          maximum: 100
+        location:
+          $ref: "#/components/schemas/Location"
+        timestamp:
+          type: string
+          format: date-time
+        sequenceNo:
+          type: integer
+        payload:
+          type: object
+          additionalProperties: true
+
+    AmrDto:
+      type: object
+      properties:
+        amrId:
+          type: string
+        deviceId:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        batteryPct:
+          type: integer
+        currentLocation:
+          $ref: "#/components/schemas/Location"
+        currentMissionId:
+          type: string
+        lastHeartbeatAt:
+          type: string
+          format: date-time
+
+    AmrListResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AmrDto"
+                page:
+                  type: integer
+                pageSize:
+                  type: integer
+                totalCount:
+                  type: integer
+
+    Location:
+      type: object
+      properties:
+        x:
+          type: number
+        y:
+          type: number
+        latitude:
+          type: number
+        longitude:
+          type: number
+        label:
+          type: string
+
+    CreateRobotPackingTaskRequest:
+      type: object
+      required: [workflowId, mrvId, itemCode, quantity, targetSmartBoxId, targetCompartmentId]
+      properties:
+        workflowId:
+          type: string
+        mrvId:
+          type: string
+        itemCode:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+        targetSmartBoxId:
+          type: string
+        targetCompartmentId:
+          type: string
+
+    RobotEventRequest:
+      type: object
+      required: [eventType, timestamp]
+      properties:
+        eventType:
+          type: string
+          enum: [PACKING_STARTED, PACKING_COMPLETED, PACKING_FAILED, HEALTH_UPDATED, FAULT, EMERGENCY_STOP]
+        workflowId:
+          type: string
+        robotTaskId:
+          type: string
+        status:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        sequenceNo:
+          type: integer
+        payload:
+          type: object
+          additionalProperties: true
+
+    RobotDto:
+      type: object
+      properties:
+        robotId:
+          type: string
+        deviceId:
+          type: string
+        status:
+          $ref: "#/components/schemas/DeviceStatus"
+        activeTaskId:
+          type: string
+        lastHeartbeatAt:
+          type: string
+          format: date-time
+
+    RobotListResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/RobotDto"
+                page:
+                  type: integer
+                pageSize:
+                  type: integer
+                totalCount:
+                  type: integer
+
+    CommandAcceptedResponse:
+      type: object
+      required: [commandId, commandState, acceptedAt]
+      properties:
+        commandId:
+          type: string
+        workflowId:
+          type: string
+        deviceId:
+          type: string
+        commandType:
+          type: string
+        commandState:
+          type: string
+          enum: [ACCEPTED, QUEUED, DUPLICATE_RETURNED]
+        acceptedAt:
+          type: string
+          format: date-time
+
+    CommandAcceptedResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/CommandAcceptedResponse"
+
+    EventAcceptedResponse:
+      type: object
+      required: [eventId, acceptedAt]
+      properties:
+        eventId:
+          type: string
+        workflowId:
+          type: string
+        deviceId:
+          type: string
+        acceptedAt:
+          type: string
+          format: date-time
+
+    EventAcceptedResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/EventAcceptedResponse"
+
+    AuditDto:
+      type: object
+      properties:
+        auditId:
+          type: string
+        entityType:
+          type: string
+        entityId:
+          type: string
+        action:
+          type: string
+        previousValue:
+          type: object
+          additionalProperties: true
+        newValue:
+          type: object
+          additionalProperties: true
+        actorId:
+          type: string
+        actorType:
+          type: string
+          enum: [USER, SYSTEM, DEVICE]
+        occurredAt:
+          type: string
+          format: date-time
+        correlationId:
+          type: string
+          format: uuid
+        workflowId:
+          type: string
+        deviceId:
+          type: string
+
+    AuditResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              $ref: "#/components/schemas/AuditDto"
+
+    AuditListResponseEnvelope:
+      allOf:
+        - $ref: "#/components/schemas/SuccessEnvelopeBase"
+        - type: object
+          properties:
+            data:
+              type: object
+              properties:
+                items:
+                  type: array
+                  items:
+                    $ref: "#/components/schemas/AuditDto"
+                page:
+                  type: integer
+                pageSize:
+                  type: integer
+                totalCount:
+                  type: integer
+
+    UserDto:
+      type: object
+      properties:
+        userId:
+          type: string
+        username:
+          type: string
+        role:
+          type: string
+          enum: [Admin, WarehouseOperator, ProductionUser, MaintenanceEngineer, Supervisor]
+        department:
+          type: string
+
+    HealthResponse:
+      type: object
+      required: [status, timestamp]
+      properties:
+        status:
+          type: string
+          enum: [Healthy, Degraded, Unhealthy]
+        timestamp:
+          type: string
+          format: date-time
